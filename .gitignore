@@ -1,0 +1,39 @@
+# 公开仓库白名单：根目录默认忽略，只开放下列项目内容
+/*
+!/.env.example
+!/.gitignore
+!/README.md
+!/WW.md
+!/pom.xml
+!/src/
+!/tools/
+!/docs/
+
+# docs 只公开运行截图
+/docs/*
+!/docs/images/
+/docs/images/*
+!/docs/images/runtime/
+!/docs/images/runtime/**
+
+# 环境变量与本地项目配置
+.env
+.WWcli/
+WW.local.md
+
+# 编译与缓存输出
+target/
+.build-cache/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 日志与系统文件
+*.log
+.DS_Store
+Thumbs.db
+/reports
+temp_articles.json
