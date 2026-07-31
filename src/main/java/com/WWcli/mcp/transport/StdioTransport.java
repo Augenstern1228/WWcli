@@ -31,7 +31,7 @@ public class StdioTransport implements McpTransport {
 
     public StdioTransport(String command, List<String> args, Map<String, String> env, Path workingDir) throws IOException {
         List<String> commandLine = new ArrayList<>();
-        commandLine.add(command);
+        commandLine.add(StdioCommandResolver.resolve(command, env));
         if (args != null) {
             commandLine.addAll(args);
         }

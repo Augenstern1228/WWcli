@@ -116,6 +116,8 @@ MCP 配置按 server 名合并：
 /mcp restart chrome-devtools
 ```
 
+Windows 启动 stdio MCP 时会按 `PATH` / `PATHEXT` 解析无路径命令，例如将 `npx` 定位到已安装的 `npx.cmd`。Node.js 的安装目录仍需在 `PATH` 中；也可以在 `mcp.json` 的 `command` 中填写显式可执行文件路径。
+
 MCP 工具数量取决于已启用的 server 及其版本，截图中的数量仅代表对应运行环境。
 
 ## 常用命令
