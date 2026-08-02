@@ -33,7 +33,7 @@ ReAct 会根据任务自主选择工具。同一轮产生多个互不依赖的�
 
 ### Plan-and-Execute 与 DAG
 
-使用 `/plan <任务>` 进入一次性计划模式。Planner 生成任务及依赖关系，CLI 支持在执行前展开计划、补充要求、取消或确认；没有依赖的任务会进入同一并行批次。
+使用 `/plan <任务>` 进入一次性计划模式。Planner 生成任务及依赖关系，CLI 支持在执行前展开计划、补充要求、取消或确认；没有依赖的任务会进入同一并行批次。执行前会校验依赖是否存在以及 DAG 是否有环，无效计划会被拒绝并指出相关任务 ID。
 
 ![WWcli Plan-and-Execute DAG](docs/images/runtime/plan-dag.png)
 

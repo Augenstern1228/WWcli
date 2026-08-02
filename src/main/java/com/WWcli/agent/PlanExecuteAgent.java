@@ -272,6 +272,10 @@ public class PlanExecuteAgent {
     }
 
     private String executePlan(ExecutionPlan plan, StreamState streamState) throws IOException {
+        if (!plan.computeExecutionOrder()) {
+            throw new IOException("计划依赖校验失败: " + plan.getValidationError());
+        }
+
         log.info("Executing plan: goal='{}', taskCount={}", plan.getGoal(), plan.getAllTasks().size());
         out.println("🚀 开始执行计划...\n");
 

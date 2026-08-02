@@ -174,6 +174,33 @@ class PlanExecuteAgentTest {
                 "tool-call 前后的流式 content 不应被误标成任务结果: " + rendered);
     }
 
+    @Test
+    void shouldRejectInvalidDagBeforeCallingLlm() {
+        StubGLMClient llmClient = new StubGLMClient(List.of());
+        Planner invalidPlanner = new Planner(llmClient) {
+            @Override
+            public ExecutionPlan createPlan(String goal) {
+                ExecutionPlan plan = new ExecutionPlan("plan-invalid", goal);
+                plan.addTask(new Task("task_2", "验证结果", Task.TaskType.VERIFICATION,
+                        List.of("task_missing")));
+                return plan;
+            }
+        };
+        PlanExecuteAgent agent = new PlanExecuteAgent(
+                llmClient,
+                new ToolRegistry(),
+                invalidPlanner,
+                null,
+                (goal, plan) -> PlanExecuteAgent.PlanReviewDecision.execute()
+        );
+
+        String result = agent.run("验证无效计划");
+
+        assertTrue(result.contains("计划依赖校验失败"));
+        assertTrue(result.contains("task_2"));
+        assertTrue(result.contains("task_missing"));
+    }
+
     private record StubResponse(LlmClient.ChatResponse response, boolean streamContent,
                                 java.util.function.Consumer<LlmClient.StreamListener> streamScript) {
         private static StubResponse plain(LlmClient.ChatResponse response) {

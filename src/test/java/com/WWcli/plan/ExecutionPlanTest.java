@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExecutionPlanTest {
@@ -115,9 +116,37 @@ class ExecutionPlanTest {
         plan.addTask(task4);
         plan.addTask(task5);
 
+        assertTrue(plan.computeExecutionOrder());
         List<List<Task>> batches = plan.getExecutionBatches();
 
         assertEquals(List.of(task1, task2, task3, task4), batches.get(0));
         assertEquals(List.of(task5), batches.get(1));
+    }
+
+    @Test
+    void rejectsMissingDependencyWithTaskAndDependencyIds() {
+        ExecutionPlan plan = new ExecutionPlan("plan_7", "demo");
+        Task task = new Task("task_2", "verify", Task.TaskType.VERIFICATION,
+                List.of("task_missing"));
+        plan.addTask(task);
+
+        assertFalse(plan.computeExecutionOrder());
+        assertTrue(plan.getValidationError().contains("task_2"));
+        assertTrue(plan.getValidationError().contains("task_missing"));
+        assertTrue(plan.getExecutionBatches().isEmpty());
+    }
+
+    @Test
+    void rejectsCycleWithConcreteTaskPath() {
+        ExecutionPlan plan = new ExecutionPlan("plan_8", "demo");
+        Task task1 = new Task("task_1", "first", Task.TaskType.ANALYSIS, List.of("task_2"));
+        Task task2 = new Task("task_2", "second", Task.TaskType.ANALYSIS, List.of("task_1"));
+        plan.addTask(task1);
+        plan.addTask(task2);
+
+        assertFalse(plan.computeExecutionOrder());
+        assertTrue(plan.getValidationError().contains("循环依赖"));
+        assertTrue(plan.getValidationError().contains("task_1 -> task_2 -> task_1"));
+        assertTrue(plan.getExecutionBatches().isEmpty());
     }
 }

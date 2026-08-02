@@ -10,6 +10,7 @@ public class ExecutionPlan {
     private final String goal;                    // 计划目标
     private final Map<String, Task> tasks;        // 所有任务
     private final List<String> executionOrder;    // 执行顺序（拓扑排序后）
+    private String validationError;               // 最近一次 DAG 校验错误
     private PlanStatus status;
     private String summary;                       // 计划摘要
     private long startTime;
@@ -38,6 +39,7 @@ public class ExecutionPlan {
     public String getSummary() { return summary; }
     public long getStartTime() { return startTime; }
     public long getEndTime() { return endTime; }
+    public String getValidationError() { return validationError; }
 
     public void setSummary(String summary) { this.summary = summary; }
     public void setStatus(PlanStatus status) { this.status = status; }
@@ -47,6 +49,8 @@ public class ExecutionPlan {
      */
     public void addTask(Task task) {
         tasks.put(task.getId(), task);
+        executionOrder.clear();
+        validationError = null;
         // 更新依赖关系
         for (String depId : task.getDependencies()) {
             Task dep = tasks.get(depId);
@@ -93,13 +97,26 @@ public class ExecutionPlan {
      */
     public boolean computeExecutionOrder() {
         executionOrder.clear();
+        validationError = null;
+
+        for (Task task : tasks.values()) {
+            for (String dependencyId : task.getDependencies()) {
+                if (!tasks.containsKey(dependencyId)) {
+                    validationError = "任务 " + task.getId()
+                            + " 依赖不存在的任务 " + dependencyId;
+                    return false;
+                }
+            }
+        }
+
         Set<String> visited = new HashSet<>();
-        Set<String> visiting = new HashSet<>();
+        Set<String> visiting = new LinkedHashSet<>();
 
         for (Task task : tasks.values()) {
             if (!visited.contains(task.getId())) {
                 if (!topologicalSort(task, visited, visiting)) {
-                    return false;  // 有环
+                    executionOrder.clear();
+                    return false;
                 }
             }
         }
@@ -111,7 +128,8 @@ public class ExecutionPlan {
         String id = task.getId();
 
         if (visiting.contains(id)) {
-            return false;  // 有环
+            validationError = "检测到循环依赖: " + formatCycle(visiting, id);
+            return false;
         }
         if (visited.contains(id)) {
             return true;
@@ -132,6 +150,21 @@ public class ExecutionPlan {
         visited.add(id);
         executionOrder.add(id);
         return true;
+    }
+
+    private String formatCycle(Set<String> visiting, String repeatedTaskId) {
+        List<String> cycle = new ArrayList<>();
+        boolean inCycle = false;
+        for (String taskId : visiting) {
+            if (taskId.equals(repeatedTaskId)) {
+                inCycle = true;
+            }
+            if (inCycle) {
+                cycle.add(taskId);
+            }
+        }
+        cycle.add(repeatedTaskId);
+        return String.join(" -> ", cycle);
     }
 
     /**
@@ -265,6 +298,9 @@ public class ExecutionPlan {
 
     public List<List<Task>> getExecutionBatches() {
         if (tasks.isEmpty()) {
+            return List.of();
+        }
+        if (!computeExecutionOrder()) {
             return List.of();
         }
 

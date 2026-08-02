@@ -121,24 +121,28 @@ public class Planner {
         for (JsonNode taskNode : tasksNode) {
             String newId = "task_" + taskIndex++;
             Task task = plan.getTask(newId);
+            String originalTaskId = taskNode.path("id").asText();
+            String reportedTaskId = originalTaskId.isBlank() ? newId : originalTaskId;
 
             JsonNode depsNode = taskNode.path("dependencies");
             if (depsNode.isArray()) {
                 for (JsonNode depNode : depsNode) {
                     String originalDepId = depNode.asText();
-                    String newDepId = idMapping.getOrDefault(originalDepId, originalDepId);
-                    Task dep = plan.getTask(newDepId);
-                    if (dep != null) {
-                        task.addDependency(newDepId);
-                        dep.addDependent(task.getId());
+                    String newDepId = idMapping.get(originalDepId);
+                    if (newDepId == null) {
+                        throw new IOException("计划依赖校验失败: 任务 " + reportedTaskId
+                                + " 依赖不存在的任务 " + originalDepId);
                     }
+                    Task dep = plan.getTask(newDepId);
+                    task.addDependency(newDepId);
+                    dep.addDependent(task.getId());
                 }
             }
         }
 
         // 计算执行顺序
         if (!plan.computeExecutionOrder()) {
-            throw new IOException("计划中存在循环依赖");
+            throw new IOException("计划依赖校验失败: " + plan.getValidationError());
         }
 
         return plan;

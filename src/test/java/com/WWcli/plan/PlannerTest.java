@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlannerTest {
@@ -55,6 +56,64 @@ class PlannerTest {
         assertEquals(2, plan.getAllTasks().size());
         assertTrue(plan.getTask("task_2").getDependencies().contains("task_1"));
         assertTrue(client.lastSystemPrompt.contains("计划前必须读取项目规则"));
+    }
+
+    @Test
+    void rejectsPlanWithMissingDependencyBeforeExecution() {
+        Planner planner = new Planner(new StubGLMClient("""
+                {
+                  "summary": "缺失依赖",
+                  "tasks": [
+                    {
+                      "id": "task_a",
+                      "description": "分析模块",
+                      "type": "ANALYSIS",
+                      "dependencies": []
+                    },
+                    {
+                      "id": "task_b",
+                      "description": "验证结果",
+                      "type": "VERIFICATION",
+                      "dependencies": ["task_missing"]
+                    }
+                  ]
+                }
+                """));
+
+        IOException error = assertThrows(IOException.class,
+                () -> planner.createPlan("先分析模块，然后验证完整结果"));
+
+        assertTrue(error.getMessage().contains("task_b"));
+        assertTrue(error.getMessage().contains("task_missing"));
+    }
+
+    @Test
+    void rejectsCyclicPlanWithConcreteTaskPath() {
+        Planner planner = new Planner(new StubGLMClient("""
+                {
+                  "summary": "循环依赖",
+                  "tasks": [
+                    {
+                      "id": "task_a",
+                      "description": "分析模块 A",
+                      "type": "ANALYSIS",
+                      "dependencies": ["task_b"]
+                    },
+                    {
+                      "id": "task_b",
+                      "description": "分析模块 B",
+                      "type": "ANALYSIS",
+                      "dependencies": ["task_a"]
+                    }
+                  ]
+                }
+                """));
+
+        IOException error = assertThrows(IOException.class,
+                () -> planner.createPlan("先分析模块 A，然后分析模块 B 并汇总"));
+
+        assertTrue(error.getMessage().contains("循环依赖"));
+        assertTrue(error.getMessage().contains("task_1 -> task_2 -> task_1"));
     }
 
     private static final class FailingGLMClient extends GLMClient {
