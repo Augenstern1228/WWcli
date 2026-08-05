@@ -17,6 +17,16 @@ WWcli 以 Java 17 构建，默认使用 ReAct 执行任务，并提供 Plan-and-
 - **代码库理解**：`glob_files`、`grep_code`、`read_file` 实时探索，RAG 作为语义检索辅助。
 - **安全控制**：HITL 审批、路径围栏、危险命令拦截、资源限制、操作审计和 Side-Git 快照。
 
+## 核心能力演进
+
+| 能力线 | 演进内容 |
+|---|---|
+| **ReAct Agent Loop** | 从基础模型对话扩展为“推理 → 行动 → 观察”的自主工具循环，串联 Tool Calling、工具执行与结果回灌；通过 `AgentBudget` 增加连续 3 轮重复调用检测和 50 轮硬上限，避免异常死循环。 |
+| **Plan-and-Execute + DAG** | 由 Planner 将复杂需求拆解为任务 DAG，执行前校验缺失依赖和循环依赖；无依赖节点按批次并行调度，最大并发 4 路，任务结果按原始顺序回放。 |
+| **Multi-Agent 协作** | 构建 Planner–Worker–Reviewer 主从架构，通过 `BlockingQueue` 池化管理默认 2 个 Worker，避免并行任务争用同一 Agent 状态；Reviewer 逐项审查，未通过步骤携带反馈最多重试 2 次。 |
+| **Memory 与上下文压缩** | 短期记忆维护当前会话，长期记忆按项目或全局作用域持久化；Compactor 为摘要输出预留 20K Token，并保留 13K 安全缓冲，200K/1M 窗口分别在约 167K/967K Token 触发压缩。 |
+| **MCP 工具生态** | 实现 MCP 客户端，支持 stdio 与 Streamable HTTP；通过 `initialize`、`notifications/initialized` 和 `tools/list` 完成握手与动态工具注册，默认可接入 Chrome DevTools MCP，当前演示环境注册 29 个外部工具。 |
+
 ## 运行效果
 
 ### 启动界面与 MCP
