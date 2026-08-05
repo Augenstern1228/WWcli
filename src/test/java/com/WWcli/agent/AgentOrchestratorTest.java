@@ -184,33 +184,62 @@ class AgentOrchestratorTest {
     }
 
     @Test
-    void shouldParseReviewApproval() {
+    void shouldPrioritizeStructuredReviewApproval() {
         AgentOrchestrator orchestrator = new AgentOrchestrator(new GLMClient("test-key"));
 
-        // 正常通过的 JSON
         assertTrue(orchestrator.parseReviewApproval(
                 "{\"approved\": true, \"summary\": \"通过\", \"issues\": []}"));
-
-        // 未通过的 JSON
         assertFalse(orchestrator.parseReviewApproval(
                 "{\"approved\": false, \"summary\": \"未通过\", \"issues\": [\"缺少错误处理\"]}"));
+        assertFalse(orchestrator.parseReviewApproval(
+                "{\"approved\": false, \"summary\": \"文字写着审查通过\", \"issues\": []}"));
+        assertFalse(orchestrator.parseReviewApproval(
+                "{\"approved\": \"true\", \"summary\": \"类型错误\", \"issues\": []}"));
+    }
 
-        // null 或空内容采取保守策略：默认不通过
+    @Test
+    void shouldParseCaseInsensitiveFencedReviewJson() {
+        AgentOrchestrator orchestrator = new AgentOrchestrator(new GLMClient("test-key"));
+
+        assertTrue(orchestrator.parseReviewApproval("""
+                审查结果如下：
+                ```JSON
+                {"approved": true, "summary": "通过", "issues": []}
+                ```
+                """));
+        assertFalse(orchestrator.parseReviewApproval("""
+                ```JsOn
+                {"approved": false, "summary": "需要修改", "issues": ["缺少边界测试"]}
+                ```
+                """));
+    }
+
+    @Test
+    void shouldHandleBilingualPlainTextVerdictsConservatively() {
+        AgentOrchestrator orchestrator = new AgentOrchestrator(new GLMClient("test-key"));
+
         assertFalse(orchestrator.parseReviewApproval(null));
         assertFalse(orchestrator.parseReviewApproval(""));
-
-        // 含否定关键词的纯文本
         assertFalse(orchestrator.parseReviewApproval("执行结果未通过审查"));
         assertFalse(orchestrator.parseReviewApproval("代码质量不合格"));
-
-        // 含肯定关键词的非 JSON 文本
+        assertFalse(orchestrator.parseReviewApproval("Review failed: changes requested"));
+        assertFalse(orchestrator.parseReviewApproval("Disapproved due to a missing boundary test"));
+        assertFalse(orchestrator.parseReviewApproval("This might pass, but the result is still unclear"));
+        assertFalse(orchestrator.parseReviewApproval("可能通过，仍需确认"));
         assertTrue(orchestrator.parseReviewApproval("审查通过，代码质量良好"));
-
-        // 既无肯定关键词也无 JSON：保守判为不通过
+        assertTrue(orchestrator.parseReviewApproval("没有问题，审查通过"));
+        assertTrue(orchestrator.parseReviewApproval("Approved. Looks good to me."));
+        assertTrue(orchestrator.parseReviewApproval("No issues found. Review passed."));
         assertFalse(orchestrator.parseReviewApproval("hmm"));
+    }
 
-        // JSON 缺少 approved 字段：保守判为不通过
+    @Test
+    void shouldRejectMissingOrMalformedStructuredVerdict() {
+        AgentOrchestrator orchestrator = new AgentOrchestrator(new GLMClient("test-key"));
+
         assertFalse(orchestrator.parseReviewApproval("{\"summary\": \"无 approved 字段\"}"));
+        assertFalse(orchestrator.parseReviewApproval("{\"approved\": true"));
+        assertFalse(orchestrator.parseReviewApproval("```JSON\n{\"approved\": true\n```"));
     }
 
     @Test
@@ -229,6 +258,19 @@ class AgentOrchestratorTest {
         String issues = orchestrator.parseReviewIssues(reviewJson);
         assertTrue(issues.contains("缺少错误处理"));
         assertTrue(issues.contains("代码风格不一致"));
+    }
+
+    @Test
+    void shouldParseIssuesFromCaseInsensitiveJsonFence() {
+        AgentOrchestrator orchestrator = new AgentOrchestrator(new GLMClient("test-key"));
+
+        String issues = orchestrator.parseReviewIssues("""
+                ```JSON
+                {"approved": false, "issues": ["缺少边界测试"]}
+                ```
+                """);
+
+        assertEquals("- 缺少边界测试", issues);
     }
 
     @Test

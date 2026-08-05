@@ -49,7 +49,7 @@ ReAct 会根据任务自主选择工具。同一轮产生多个互不依赖的�
 
 ### Multi-Agent 协作
 
-使用 `/team <任务>` 启动多 Agent 模式。Planner 负责拆解任务，默认两个 Worker 按依赖批次执行，Reviewer 逐项检查结果；未通过的步骤最多重试两次。
+使用 `/team <任务>` 启动多 Agent 模式。Planner 负责拆解任务，默认两个 Worker 按依赖批次执行，Reviewer 逐项检查结果；结构化 `approved` 字段优先，中英文否定、损坏 JSON 或模糊结论均保守判为不通过，未通过的步骤最多重试两次。
 
 ![WWcli Multi-Agent 协作审查](docs/images/runtime/multi-agent-review.png)
 

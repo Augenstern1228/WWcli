@@ -16,6 +16,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Agent 编排器 - Multi-Agent 系统的"主"
@@ -43,6 +45,12 @@ public class AgentOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(AgentOrchestrator.class);
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final int MAX_RETRIES_PER_STEP = 2;
+    private static final Pattern JSON_FENCE_PATTERN = Pattern.compile(
+            "```[\\t ]*json[\\t ]*\\R?(.*?)\\R?[\\t ]*```",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern GENERIC_FENCE_PATTERN = Pattern.compile(
+            "\\A```[\\t ]*\\R?(.*?)\\R?[\\t ]*```\\z",
+            Pattern.DOTALL);
 
     private final LlmClient llmClient;
     private final SubAgent planner;
@@ -303,38 +311,81 @@ public class AgentOrchestrator {
      * 解析失败时采取保守策略：默认判为"不通过"，避免在审查者异常输出时让问题结果直接放行。
      */
     boolean parseReviewApproval(String reviewContent) {
-        if (reviewContent == null || reviewContent.isEmpty()) {
+        if (reviewContent == null || reviewContent.isBlank()) {
             log.warn("Reviewer returned empty content, defaulting to rejected");
             return false;
         }
+        String cleaned = normalizeReviewerPayload(reviewContent);
         try {
-            String cleaned = reviewContent.replaceAll("```json\\s*", "")
-                    .replaceAll("```\\s*", "")
-                    .trim();
             JsonNode root = mapper.readTree(cleaned);
-            JsonNode approvedNode = root.path("approved");
-            if (approvedNode.isMissingNode() || approvedNode.isNull()) {
-                log.warn("Reviewer JSON missing 'approved' field, defaulting to rejected");
+            JsonNode approvedNode = root == null ? null : root.get("approved");
+            if (approvedNode == null || !approvedNode.isBoolean()) {
+                log.warn("Reviewer JSON missing boolean 'approved' field, defaulting to rejected");
                 return false;
             }
-            return approvedNode.asBoolean(false);
+            return approvedNode.booleanValue();
         } catch (Exception e) {
-            // 无法解析 JSON：必须同时不含否定关键词且含有肯定关键词，才视为通过
-            String lower = reviewContent.toLowerCase();
-            boolean hasNegativeKeyword = lower.contains("未通过") || lower.contains("不通过")
-                    || lower.contains("不合格") || lower.contains("有问题")
-                    || lower.contains("\"approved\": false") || lower.contains("\"approved\":false");
-            boolean hasPositiveKeyword = lower.contains("通过") || lower.contains("合格")
-                    || lower.contains("\"approved\": true") || lower.contains("\"approved\":true");
-            if (hasNegativeKeyword) {
+            // 损坏的 JSON 不能退化为关键词放行；纯文本也必须是明确肯定结论。
+            if (looksLikeJson(cleaned)) {
+                log.warn("Reviewer returned malformed JSON, defaulting to rejected");
                 return false;
             }
-            if (!hasPositiveKeyword) {
-                log.warn("Reviewer output unparseable and contains no explicit approval, defaulting to rejected");
+            String lower = cleaned.toLowerCase(Locale.ROOT);
+            if (containsNegativeVerdict(lower) || containsAmbiguousVerdict(lower)) {
                 return false;
             }
-            return true;
+            if (containsPositiveVerdict(lower)) {
+                return true;
+            }
+            log.warn("Reviewer output contains no explicit approval, defaulting to rejected");
+            return false;
         }
+    }
+
+    String normalizeReviewerPayload(String reviewContent) {
+        String trimmed = reviewContent == null ? "" : reviewContent.trim();
+        Matcher jsonFence = JSON_FENCE_PATTERN.matcher(trimmed);
+        if (jsonFence.find()) {
+            return jsonFence.group(1).trim();
+        }
+        Matcher genericFence = GENERIC_FENCE_PATTERN.matcher(trimmed);
+        if (genericFence.matches()) {
+            return genericFence.group(1).trim();
+        }
+        return trimmed;
+    }
+
+    private boolean looksLikeJson(String content) {
+        String trimmed = content.trim();
+        return trimmed.startsWith("{") || trimmed.startsWith("[")
+                || trimmed.contains("\"approved\"");
+    }
+
+    private boolean containsNegativeVerdict(String lower) {
+        return containsAny(lower,
+                "未通过", "不通过", "未批准", "不批准", "拒绝", "不合格", "存在问题", "仍有问题",
+                "结果有问题", "代码有问题", "发现了问题", "发现以下问题",
+                "需要修改", "需要改进", "not approved", "not pass", "did not pass", "review failed",
+                "failed review", "rejected", "disapproved", "unapproved", "approval denied", "needs changes",
+                "changes requested", "found issues", "found a problem", "problems remain", "has issues");
+    }
+
+    private boolean containsAmbiguousVerdict(String lower) {
+        return containsAny(lower,
+                "可能通过", "也许通过", "不确定", "尚不明确", "待确认", "无法判断",
+                "maybe approved", "might pass", "uncertain", "unclear", "pending confirmation",
+                "cannot determine");
+    }
+
+    private boolean containsPositiveVerdict(String lower) {
+        return containsAny(lower,
+                "审查通过", "审核通过", "检查通过", "结果通过", "可以通过", "质量合格", "符合要求",
+                "已批准", "批准通过", "没有问题", "未发现问题", "approved", "review passed", "passes review",
+                "pass review", "lgtm", "looks good", "meets requirements", "no issues", "no problems found");
+    }
+
+    private boolean containsAny(String content, String... keywords) {
+        return Arrays.stream(keywords).anyMatch(content::contains);
     }
 
     /**
@@ -345,9 +396,7 @@ public class AgentOrchestrator {
             return "";
         }
         try {
-            String cleaned = reviewContent.replaceAll("```json\\s*", "")
-                    .replaceAll("```\\s*", "")
-                    .trim();
+            String cleaned = normalizeReviewerPayload(reviewContent);
             JsonNode root = mapper.readTree(cleaned);
 
             JsonNode issuesNode = root.path("issues");
