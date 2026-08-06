@@ -2,6 +2,8 @@ package com.WWcli.image;
 
 import com.WWcli.llm.LlmClient;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.imageio.ImageIO;
@@ -119,6 +121,32 @@ class ImageReferenceParserTest {
                 tempDir);
 
         assertTrue(message.hasImageContent(), "%20 编码路径仍应被解码为本地路径");
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void resolvesWindowsFileUriWithForwardSlashDrivePath(@TempDir Path tempDir) throws Exception {
+        Path image = tempDir.resolve("forward slash.png");
+        Files.write(image, new byte[]{1, 2, 3});
+
+        String forwardSlashPath = image.toAbsolutePath().toString().replace('\\', '/');
+        LlmClient.Message message = ImageReferenceParser.userMessage(
+                "看看 @image:<file://" + forwardSlashPath + ">",
+                tempDir);
+
+        assertTrue(message.hasImageContent(), "file://C:/... 应保留 Windows 盘符");
+    }
+
+    @Test
+    void resolvesCanonicalFileUriAcrossPlatforms(@TempDir Path tempDir) throws Exception {
+        Path image = tempDir.resolve("标准 file uri.png");
+        Files.write(image, new byte[]{1, 2, 3});
+
+        LlmClient.Message message = ImageReferenceParser.userMessage(
+                "看看 @image:<" + image.toUri().toASCIIString() + ">",
+                tempDir);
+
+        assertTrue(message.hasImageContent(), "标准 file URI 应在 Windows 与 Unix/macOS 上保持可用");
     }
 
     @Test

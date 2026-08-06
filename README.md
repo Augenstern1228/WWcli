@@ -149,6 +149,7 @@ MCP 工具数量取决于已启用的 server 及其版本，截图中的数量�
 | `/exit` | 退出 WWcli |
 
 输入 `/` 后可使用 Tab 补全命令；普通输入还支持 `@path`、`@image:` 和 MCP resource 引用。
+Windows 图片路径可使用 `@image:<file://C:\Users\name\shot.png>` 或标准的 `@image:<file:///C:/Users/name/shot.png>`；空格、中文和百分号编码路径均可解析。
 
 ## 技术栈
 

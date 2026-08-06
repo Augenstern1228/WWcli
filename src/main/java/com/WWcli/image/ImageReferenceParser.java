@@ -3,6 +3,7 @@ package com.WWcli.image;
 import com.WWcli.llm.LlmClient;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -152,17 +153,31 @@ public class ImageReferenceParser {
     // file:// 路径自己处理：URI.create 对未编码空格和非 ASCII 会抛 IllegalArgumentException，
     // 而 Claude Code / Cursor 给的引用经常是裸路径或 macOS Finder 拷贝出的 file:// + 中文。
     // 这里只关心拿到本地路径字符串，所以自己做一次宽容的 percent-decode：合法的 %XX 解码，
-    // 其他字符（包括空格、中文、未编码字节）原样保留。
+    // 其他字符（包括空格、中文、未编码字节）原样保留。Windows 盘符路径需要在 authority
+    // 解析前识别，避免 file://C:/... 丢失盘符，或 file:///C:/... 被当成根目录下的 C: 路径。
     private static String fileUriToLocalPath(String value) {
         String afterScheme = value.substring("file://".length());
-        String pathPart;
-        if (afterScheme.startsWith("/")) {
-            pathPart = afterScheme;
-        } else {
-            int slashIdx = afterScheme.indexOf('/');
-            pathPart = slashIdx < 0 ? "/" + afterScheme : afterScheme.substring(slashIdx);
+        String decoded = percentDecodeUtf8(afterScheme);
+        if (File.separatorChar == '\\') {
+            if (isWindowsDrivePath(decoded)) {
+                return decoded;
+            }
+            if (decoded.startsWith("/") && isWindowsDrivePath(decoded.substring(1))) {
+                return decoded.substring(1);
+            }
         }
-        return percentDecodeUtf8(pathPart);
+        if (decoded.startsWith("/")) {
+            return decoded;
+        }
+        int slashIdx = decoded.indexOf('/');
+        return slashIdx < 0 ? "/" + decoded : decoded.substring(slashIdx);
+    }
+
+    private static boolean isWindowsDrivePath(String value) {
+        return value.length() >= 3
+                && Character.isLetter(value.charAt(0))
+                && value.charAt(1) == ':'
+                && (value.charAt(2) == '\\' || value.charAt(2) == '/');
     }
 
     private static String percentDecodeUtf8(String s) {
